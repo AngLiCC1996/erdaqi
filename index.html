@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>二打一棋</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    padding: 20px;
+  }
+  .game {
+    background: #fff;
+    border-radius: 20px;
+    padding: 28px 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.3);
+    max-width: 420px;
+    width: 100%;
+  }
+  h1 {
+    font-size: 24px;
+    text-align: center;
+    color: #333;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 18px;
+  }
+  .status {
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: #555;
+    background: #f5f5f5;
+    padding: 10px;
+    border-radius: 10px;
+    margin-bottom: 16px;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    background: #8b7355;
+    padding: 14px;
+    border-radius: 14px;
+    aspect-ratio: 1;
+  }
+  .cell {
+    background: #f0e6d2;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    transition: background .15s;
+  }
+  .cell:hover { background: #e8dcc0; }
+  .cell.target { background: #d4e8c0; }
+  .cell.target:hover { background: #c8e0b0; }
+  .cell.black::after {
+    content: '';
+    width: 70%;
+    height: 70%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #666, #111);
+    box-shadow: 0 4px 10px rgba(0,0,0,.4);
+    animation: pop .2s ease;
+  }
+  .cell.white::after {
+    content: '';
+    width: 70%;
+    height: 70%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fff, #ccc);
+    border: 2px solid #aaa;
+    box-shadow: 0 4px 10px rgba(0,0,0,.3);
+    animation: pop .2s ease;
+  }
+  .cell.selected::after {
+    box-shadow: 0 0 0 4px #f5a623, 0 0 0 7px rgba(245,166,35,.3), 0 4px 12px rgba(0,0,0,.4);
+  }
+  @keyframes pop {
+    0% { transform: scale(.8); }
+    100% { transform: scale(1); }
+  }
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  button {
+    flex: 1;
+    padding: 11px;
+    font-size: 15px;
+    font-family: inherit;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: .15s;
+  }
+  .btn-primary {
+    background: #667eea;
+    color: #fff;
+  }
+  .btn-primary:hover { background: #5a6fd8; }
+  .btn-secondary {
+    background: #eee;
+    color: #555;
+  }
+  .btn-secondary:hover { background: #e0e0e0; }
+  .rules {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid #eee;
+    font-size: 13px;
+    color: #777;
+    line-height: 1.7;
+  }
+  .rules h3 {
+    font-size: 14px;
+    color: #555;
+    margin-bottom: 6px;
+  }
+  .rules .tag-b { color: #333; font-weight: 700; }
+  .rules .tag-w { color: #999; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="game">
+  <h1>二打一棋</h1>
+  <div class="subtitle">黑方围堵 · 白方突围</div>
+  <div class="status" id="status">黑方走棋</div>
+  <div class="board" id="board"></div>
+  <div class="controls">
+    <button class="btn-primary" id="restartBtn">重新开始</button>
+    <button class="btn-secondary" id="modeBtn">切换为电脑对战</button>
+  </div>
+  <div class="rules">
+    <h3>规则说明</h3>
+    <p>· <span class="tag-b">黑方</span> 2枚棋子，<span class="tag-w">白方</span> 1枚棋子，黑方先行。</p>
+    <p>· 每次移动一枚己方棋子到相邻空点（上下左右）。</p>
+    <p>· <span class="tag-b">黑方目标</span>：堵死白子，或让白方 15 步内无法到达角落。</p>
+    <p>· <span class="tag-w">白方目标</span>：将白子移动到两个绿色角落之一。</p>
+    <p>· 点击己方棋子选中，再点击相邻空点移动。</p>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const ADJ = {
+    0: [1, 3],
+    1: [0, 2, 4],
+    2: [1, 5],
+    3: [0, 4, 6],
+    4: [1, 3, 5, 7],
+    5: [2, 4, 8],
+    6: [3, 7],
+    7: [4, 6, 8],
+    8: [5, 7]
+  };
+  const TARGETS = [0, 8];
+  const MAX_WHITE_MOVES = 15;
+
+  let board, turn, selected, gameOver, whiteMoves, vsAI;
+
+  const boardEl = document.getElementById('board');
+  const statusEl = document.getElementById('status');
+  const restartBtn = document.getElementById('restartBtn');
+  const modeBtn = document.getElementById('modeBtn');
+
+  function init() {
+    board = ['B', null, null, null, 'W', null, null, null, 'B'];
+    turn = 'B';
+    selected = null;
+    gameOver = false;
+    whiteMoves = 0;
+    setStatus('黑方走棋');
+    render();
+  }
+
+  function setStatus(text) {
+    statusEl.textContent = text;
+  }
+
+  function render() {
+    boardEl.innerHTML = '';
+    for (let i = 0; i < 9; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      if (board[i] === 'B') cell.classList.add('black');
+      if (board[i] === 'W') cell.classList.add('white');
+      if (selected === i) cell.classList.add('selected');
+      if (TARGETS.includes(i)) cell.classList.add('target');
+      cell.addEventListener('click', () => handleClick(i));
+      boardEl.appendChild(cell);
+    }
+  }
+
+  function handleClick(i) {
+    if (gameOver) return;
+    if (vsAI && turn === 'B') return;
+
+    if (board[i] === turn) {
+      selected = i;
+      render();
+      return;
+    }
+    if (selected === null) return;
+    if (board[i] !== null) return;
+    if (!ADJ[selected].includes(i)) return;
+
+    makeMove(selected, i);
+  }
+
+  function makeMove(from, to) {
+    const piece = board[from];
+    board[to] = piece;
+    board[from] = null;
+    selected = null;
+
+    if (piece === 'W' && TARGETS.includes(to)) {
+      gameOver = true;
+      setStatus('白方获胜！白子成功突围。');
+      render();
+      return;
+    }
+
+    if (checkWhiteBlocked()) {
+      gameOver = true;
+      setStatus('黑方获胜！白子被堵死。');
+      render();
+      return;
+    }
+
+    if (piece === 'W') {
+      whiteMoves++;
+      if (whiteMoves >= MAX_WHITE_MOVES) {
+        gameOver = true;
+        setStatus(`黑方获胜！白方 ${MAX_WHITE_MOVES} 步内未到达角落。`);
+        render();
+        return;
+      }
+    }
+
+    turn = turn === 'B' ? 'W' : 'B';
+    if (turn === 'B') {
+      setStatus('黑方走棋');
+    } else {
+      setStatus(`白方走棋（剩余 ${MAX_WHITE_MOVES - whiteMoves} 步）`);
+    }
+    render();
+
+    if (vsAI && turn === 'B' && !gameOver) {
+      setTimeout(blackAI, 450);
+    }
+  }
+
+  function checkWhiteBlocked() {
+    const w = board.indexOf('W');
+    if (w === -1) return false;
+    return ADJ[w].every(n => board[n] === 'B');
+  }
+
+  function manhattan(a, b) {
+    return Math.abs(Math.floor(a / 3) - Math.floor(b / 3)) +
+           Math.abs(a % 3 - b % 3);
+  }
+
+  function evaluateBoard() {
+    const w = board.indexOf('W');
+    if (w === -1) return 0;
+
+    const dist = Math.min(manhattan(w, 0), manhattan(w, 8));
+    const blocked = ADJ[w].filter(n => board[n] === 'B').length;
+    const cornerHeld = (board[0] === 'B' ? 1 : 0) + (board[8] === 'B' ? 1 : 0);
+
+    let threat = 0;
+    for (const target of TARGETS) {
+      if (board[target] === null && ADJ[target].includes(w)) {
+        threat += 1;
+      }
+    }
+
+    return -dist * 2 + blocked * 6 + cornerHeld * 10 - threat * 50;
+  }
+
+  function blackAI() {
+    if (gameOver || turn !== 'B') return;
+
+    const moves = [];
+    for (let i = 0; i < 9; i++) {
+      if (board[i] !== 'B') continue;
+      for (const j of ADJ[i]) {
+        if (board[j] === null) moves.push([i, j]);
+      }
+    }
+    if (moves.length === 0) return;
+
+    let best = moves[0];
+    let bestScore = -Infinity;
+
+    for (const [from, to] of moves) {
+      board[to] = 'B';
+      board[from] = null;
+      const score = evaluateBoard();
+      board[to] = null;
+      board[from] = 'B';
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = [from, to];
+      }
+    }
+
+    makeMove(best[0], best[1]);
+  }
+
+  restartBtn.addEventListener('click', init);
+
+  modeBtn.addEventListener('click', () => {
+    vsAI = !vsAI;
+    modeBtn.textContent = vsAI ? '切换为双人对战' : '切换为电脑对战';
+    init();
+    if (vsAI) {
+      setStatus('黑方走棋（电脑）');
+      setTimeout(blackAI, 450);
+    }
+  });
+
+  init();
+})();
+</script>
+</body>
+</html>
